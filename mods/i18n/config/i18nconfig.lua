@@ -12,6 +12,6 @@ c.logLevel = 1 -- 0 - nothing, 1 - errors, 2 - info, 3 - debug
 
 Using localized string can fail for freshly added languages, if someone will change localization of word 'Quit' or if few languages have same translation of this word.
 ]]
-c.detectMode = "optimal"
+c.detectMode = "full"
 
 return c

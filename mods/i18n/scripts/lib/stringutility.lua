@@ -7,11 +7,16 @@ The main problem is that if player's Steam language is English, game will not wr
 Of course, I can just use 'if "Quit"%_t == "Beenden" then lang = "de" end ..' (simpleMode) and so on for every language. But this means I need to add a new check every time devs add new language, it can break in the future if few languages will have the same translation e.t.c.
 Also it's not as fun :) ]]
 
+local MOD = "i18n"
+local VERSION = "0.0.4"
+local AUTHOR = "Artem Romanko (Rinart73)"
+
 local s, config = pcall(require, "mods/i18n/config/i18nconfig")
 if not s then
-    config = { langCode = "auto", logLevel = 1, detectMode = "optimal" } -- default settings
+    config = { langCode = "auto", logLevel = 1, detectMode = "full" } -- default settings
 end
 config.langCode = config.langCode:lower()
+config.logLevel = tonumber(config.logLevel) or 0
 config.detectMode = config.detectMode:lower()
 
 local lang = config.langCode ~= "auto" and config.langCode or nil
@@ -97,16 +102,15 @@ function i18n.detectLanguage()
                       if f ~= nil then
                           local content = f:read("*a")
                           f:close()
-
-                          --[[ Slowest part of entire code, especially if this is first load during game session.
-                            If Steam language is English, there will be no 'setting language' in the clientlog and regex will take up to 0.8 second on my PC
-                            Thanks to the helper file, this will only happen in the first time.
-                          ]]
-                          local y, m, d, H, M, S, lang = content:gmatch('.*\n(%d+)-(%d+)-(%d+) (%d+)-(%d+)-(%d+)|[^\n]+Setting language file "data[/\\]localization[/\\]([%a-]+)%.po')()
+                          -- Reverse both file text and regex, because I'm terrible at regex-es and this way it works faster o_o. Maybe * is too greedy?
+                          content = content:reverse()
+                          local lang, S, M, H, d, m, y = content:gmatch('"op%.([%a-]+)[/\\]noitazilacol[/\\]atad" elif egaugnal gnitteS[^|]+|(%d+)-(%d+)-(%d+) (%d+)-(%d+)-(%d+)')()
                           if lang ~= nil then
+                              lang = lang:reverse()
                               if lang == "deutsch" then lang = "de" end
 
-                              local newTime = os.time{year=y, month=m, day=d, hour=H, minute=M, second=S}
+                              local newTime = os.time{year=y:reverse(), month=m:reverse(), day=d:reverse(), hour=H:reverse(), min=M:reverse(), sec=S:reverse()}
+                              log(3, "Check if newTime > prevTime: %i > %i", newTime, prevTime)
                               if newTime > prevTime then -- found new 'setting language'
                                   helperSetData(time, lang, 1)
                                   log(3, "found 'new' language: %s", lang)
