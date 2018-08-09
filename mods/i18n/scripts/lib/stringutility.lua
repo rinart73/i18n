@@ -1,167 +1,33 @@
---[[ This mod was developed to provide easy way of internationalization for mods and also to show devs that we REALLY need built-in 'getGameLanguage()' function.
-
-The following code heavilly relies on the hope that settings.ini, current clientlog and mod helper file are accessible.
-
-The main problem is that if player's Steam language is English, game will not write 'Setting language file' in clientlog, because there is no need to load localization files for English. This can mess up everything, especially if player changes language in menu without restarting the game.
-
-Of course, I can just use 'if "Quit"%_t == "Beenden" then lang = "de" end ..' (simpleMode) and so on for every language. But this means I need to add a new check every time devs add new language, it can break in the future if few languages will have the same translation e.t.c.
-Also it's not as fun :) ]]
-
-local MOD = "i18n"
-local VERSION = "0.0.4"
-local AUTHOR = "Artem Romanko (Rinart73)"
-
-local s, config = pcall(require, "mods/i18n/config/i18nconfig")
-if not s then
-    config = { langCode = "auto", logLevel = 1, detectMode = "full" } -- default settings
+local status, config = pcall(require, "mods/i18n/config/i18n")
+if not status then
+    config = { logLevel = 1, secondaryLanguages = { "en" } } -- default
+    log(logLevel.Error, "Can't load config file (mods/i18n/config/i18n.lua)")
 end
-config.langCode = config.langCode:lower()
-config.logLevel = tonumber(config.logLevel) or 0
-config.detectMode = config.detectMode:lower()
 
-local lang = config.langCode ~= "auto" and config.langCode or nil
-local firstRegistered = false
-local L10n = {}
-local mods = {}
+local logLevel = { Error = 1, Warn = 2, Info = 3, Debug = 4 }
+local logLevelLabel = { "ERROR", "WARN", "INFO", "DEBUG" }
+local function log(level, msg, ...)
+    if level > config.logLevel then return end
+    print(string.format("[%s][i18n]: "..msg, logLevelLabel[level], ...))
+end
 
 i18n = {}
 
-local function log(lvl, msg, ...)
-    if lvl > config.logLevel then return end
-
-    if lvl == 1 then lvl = "[ERROR]"
-    elseif lvl == 2 then lvl = "[INFO]"
-    else lvl = "[DEBUG]" end
-
-    print(string.format("%s%s: "..msg, "[i18n]", lvl, ...))
-end
-
--- we need to save last language change time to work with language=steam case
-local function helperSetData(timestamp, lang, isSteam)
-    local f = io.open("i18n.txt", "w+b")
-    if f == nil then
-        log(1, "can't open i18n.txt")
-        return
-    end
-    f:write(timestamp, "\r\n", lang, "\r\n", isSteam or "0")
-    f:close()
-end
-
-local function helperGetData()
-    local f = io.open("i18n.txt", "r")
-    if not f then
-        helperSetData(0, "en")
-        return {"0", "en", "0"}
-    end
-    local result = {}
-    for line in f:lines() do result[#result+1] = line end
-    f:close()    
-    return result
-end
-
-function i18n.detectLanguage()
-    if config.detectMode ~= "simple" then
-
-      local time = os.time()
-      local startTime = time - math.floor(appTime()) -- approximate game start time (clientlog had to be created in that time)
-      local open = io.open
-
-      -- Try to get language from settings.ini (language=ru)
-      local f = open("settings.ini", "rb")
-      if f ~= nil then      
-          local content = f:read("*a")
-          f:close()
-
-          local lang = content:gmatch('language=([%a-]+)')()
-          if lang ~= nil then
-              if lang ~= "steam" then -- we're lucky, game is not using steam language
-                  helperSetData(startTime, lang)
-                  log(3, "settings.ini - language is: %s", lang)
-                  return lang
-              elseif config.detectMode == "full" then -- Try to use clientlog              
-                  local lines = helperGetData()
-                  if lines ~= nil and #lines > 2 then
-                      local prevTime = tonumber(lines[1])
-                      local prevLang = lines[2]
-                      local isSteam = lines[3]
-
-                      if isSteam == "1" and prevTime > startTime then -- we already detected what language=steam means during this game launch
-                          helperSetData(time, prevLang, 1)
-                          log(3, "steam language was already detected: %s", prevLang)
-                          return prevLang
-                      end
-
-                      local logname = os.date("clientlog %Y-%m-%d %H-%M-%S.txt", startTime)
-                      f = open(logname, "rb")
-                      if f == nil then -- Due to the fact that os.time gives no miliseconds we can try to subtract 1 second to find client log
-                          log(3, "try to subtract 1 sec to find clientlog")
-                          logname = os.date("clientlog %Y-%m-%d %H-%M-%S.txt", startTime-1)
-                          f = open(logname, "rb")
-                      end
-
-                      if f ~= nil then
-                          local content = f:read("*a")
-                          f:close()
-                          -- Reverse both file text and regex, because I'm terrible at regex-es and this way it works faster o_o. Maybe * is too greedy?
-                          content = content:reverse()
-                          local lang, S, M, H, d, m, y = content:gmatch('"op%.([%a-]+)[/\\]noitazilacol[/\\]atad" elif egaugnal gnitteS[^|]+|(%d+)-(%d+)-(%d+) (%d+)-(%d+)-(%d+)')()
-                          if lang ~= nil then
-                              lang = lang:reverse()
-                              if lang == "deutsch" then lang = "de" end
-
-                              local newTime = os.time{year=y:reverse(), month=m:reverse(), day=d:reverse(), hour=H:reverse(), min=M:reverse(), sec=S:reverse()}
-                              log(3, "Check if newTime > prevTime: %i > %i", newTime, prevTime)
-                              if newTime > prevTime then -- found new 'setting language'
-                                  helperSetData(time, lang, 1)
-                                  log(3, "found 'new' language: %s", lang)
-                                  return lang
-                              else -- can't find 'new' 'setting language', then language=steam means english
-                                  helperSetData(time, "en", 1)
-                                  log(3, "can't find 'new' language, assuming it's english")
-                                  return "en"
-                              end
-                          else -- if we can't find 'setting language', language=steam means english
-                              helperSetData(time, "en", 1)
-                              log(2, "can't find language in clientlog, assuming it's english")
-                              return "en"
-                          end
-                      else log(1, "can't find or open clientlog") end
-                  else
-                      helperSetData(0, "en")
-                      log(1, "can't open i18n.txt")
-                  end
-              end
-          else log(1, "can't find language in settings.ini") end
-      else log(1, "can't open settings.ini") end
-
-    end
-    -- Try localized string
-    local s = GetLocalizedString("Quit")
-    local lang
-    if s == "Beenden" then lang = "de"
-    elseif s == "Выход" then lang = "ru"
-    elseif s == "退出游戏" then lang = "zh"
-    elseif s == "退出" then lang = "zh-hk"
-    else lang = "en" end
-
-    log(3, "Language is '%s' based on localized string '%s'", lang, s)
-    return lang
-end
-
-function i18n.getLanguage()
-    if lang == nil then
-        local t
-        if config.logLevel > 2 then t = appTime() end
-        lang = i18n.detectLanguage()
-        if config.logLevel > 2 then
-            t = appTime() - t
-            log(3, "detected language in %f seconds", t)
+local L10n = {} -- table that contains all loaded translations
+local localizedMods = {} -- array of mods that use i18n, where each key is modname
+local languages = config.secondaryLanguages -- use first lang code in 'secondaryLanguages' for server
+if getCurrentLanguage ~= nil then -- use getCurrentLanguage() result as first lang code for client
+    local lang = getCurrentLanguage()
+    for k, v in ipairs(languages) do
+        if v == lang then
+            table.remove(languages, k) -- remove duplicate lang code
+            break
         end
     end
-    return lang
+    table.insert(languages, 1,  lang)
 end
 
-local oldInterp
+local oldInterp -- save old interp
 local function newInterp(s, tab)
     if tab or not L10n[s] then
         return oldInterp(s, tab)
@@ -169,36 +35,45 @@ local function newInterp(s, tab)
     return L10n[s]
 end
 
-local function setNewInterp() -- override % operator only if mod was registered
-    oldInterp = getmetatable("").__mod
-    getmetatable("").__mod = newInterp
-end
-
+-- Register mod and load it's localization
 function i18n.registerMod(modname) -- ModName -> mods/ModName/localization
-    if mods[modname] then return end -- don't register mod twice
-
-    if lang == nil then
-        local t
-        if config.logLevel > 2 then t = appTime() end
-        lang = i18n.detectLanguage()
-        if config.logLevel > 2 then
-            t = appTime() - t
-            log(3, "detected language in %f seconds", t)
+    if not status then
+        return 1
+    end
+    log(logLevel.Debug, "Trying to load translation for mod '%s'", modname)
+    if localizedMods[modname] then -- don't register mod twice
+        return 2
+    end
+    localizedMods[modname] = true
+    -- try to load translation files
+    local s, translation
+    for i = 1, #languages do
+        s, translation = pcall(require, "mods/"..modname.."/localization/"..languages[i])
+        if not s then -- now 'translation' contains the reason why file wasn't loaded
+            log(logLevel.Info, "Can't load localization files for mod '%s' - %s", modname, translation)
+        else
+            break
         end
     end
-    
-    mods[modname] = true
-    
-    local s, r = pcall(require, "mods/"..modname.."/localization/"..lang)
     if not s then
-        return false, r
+        return 3, translation
     end
-    if not firstRegistered then
-        firstRegistered = true
-        setNewInterp()
-    end
-    for k,v in pairs(r) do
+
+    for k, v in pairs(translation) do
         L10n[k] = v
     end
-    return true
+    if oldInterp == nil then -- override interp
+        oldInterp = getmetatable("").__mod
+        getmetatable("").__mod = newInterp
+    end
+    return 0
+end
+
+-- Get list of all mods that tried or succeeded in calling 'i18n.registerMod'
+function i18n.getMods()
+    local r = {}
+    for k,_ in pairs(localizedMods) do
+        r[#r+1] = k
+    end
+    return r
 end
