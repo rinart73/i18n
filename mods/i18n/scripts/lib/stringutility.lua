@@ -36,7 +36,7 @@ local function newInterp(s, tab)
 end
 
 -- Register mod and load it's localization
-function i18n.registerMod(modname) -- ModName -> mods/ModName/localization
+function i18n.registerMod(modname, custompath) -- ModName -> mods/ModName/localization
     if not status then
         return 1
     end
@@ -46,9 +46,10 @@ function i18n.registerMod(modname) -- ModName -> mods/ModName/localization
     end
     localizedMods[modname] = true
     -- try to load translation files
-    local s, translation
+    local s, translation, path
     for i = 1, #languages do
-        s, translation = pcall(require, "mods/"..modname.."/localization/"..languages[i])
+        path = custompath and custompath..languages[i] or "mods/"..modname.."/localization/"..languages[i]
+        s, translation = pcall(require, path)
         if not s then -- now 'translation' contains the reason why file wasn't loaded
             log(logLevel.Info, "Can't load localization files for mod '%s' - %s", modname, translation)
         else
@@ -56,7 +57,12 @@ function i18n.registerMod(modname) -- ModName -> mods/ModName/localization
         end
     end
     if not s then
-        return 3, translation
+        -- if there is an actual error
+        if not translation or not translation:match("^[^\r\n]+not found:[\r\n]+") then
+            return 3, translation
+        end
+        -- if file wasn't found
+        return 4
     end
 
     for k, v in pairs(translation) do
