@@ -1,3 +1,5 @@
+if onClient() then
+
 local status, config = pcall(require, "mods/i18n/config/i18n")
 if not status then
     config = { logLevel = 1, secondaryLanguages = { "en" } } -- default
@@ -82,4 +84,6 @@ function i18n.getMods()
         r[#r+1] = k
     end
     return r
+end
+
 end
