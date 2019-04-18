@@ -1,23 +1,25 @@
-if onClient() then
-
-local status, config = pcall(require, "mods/i18n/config/i18n")
+local status, config = pcall(require, "mods/i18n/config/i18nConfig")
 if not status then
-    config = { logLevel = 1, secondaryLanguages = { "en" } } -- default
-    log(logLevel.Error, "Can't load config file (mods/i18n/config/i18n.lua)")
+    eprint("[ERROR][i18n]: Couldn't load config, using default settings")
+    config = { LogLevel = 1, SecondaryLanguages = { "en" } }
 end
 
-local logLevel = { Error = 1, Warn = 2, Info = 3, Debug = 4 }
+local LogLevel = { Error = 1, Warn = 2, Info = 3, Debug = 4 }
 local logLevelLabel = { "ERROR", "WARN", "INFO", "DEBUG" }
 local function log(level, msg, ...)
-    if level > config.logLevel then return end
-    print(string.format("[%s][i18n]: "..msg, logLevelLabel[level], ...))
+    if level > config.LogLevel then return end
+    if level == LogLevel.Error then
+      eprint(string.format("[%s][i18n]: "..msg, logLevelLabel[level], ...))
+    else
+      print(string.format("[%s][i18n]: "..msg, logLevelLabel[level], ...))
+    end
 end
 
 i18n = {}
 
 local L10n = {} -- table that contains all loaded translations
 local localizedMods = {} -- array of mods that use i18n, where each key is modname
-local languages = config.secondaryLanguages -- use first lang code in 'secondaryLanguages' for server
+local languages = config.SecondaryLanguages -- use first lang code in 'SecondaryLanguages' for server
 if getCurrentLanguage ~= nil then -- use getCurrentLanguage() result as first lang code for client
     local lang = getCurrentLanguage()
     for k, v in ipairs(languages) do
@@ -42,7 +44,7 @@ function i18n.registerMod(modname, custompath) -- ModName -> mods/ModName/locali
     if not status then
         return 1
     end
-    log(logLevel.Debug, "Trying to load translation for mod '%s'", modname)
+    log(LogLevel.Debug, "Trying to load translation for mod '%s'", modname)
     if localizedMods[modname] then -- don't register mod twice
         return 2
     end
@@ -53,7 +55,7 @@ function i18n.registerMod(modname, custompath) -- ModName -> mods/ModName/locali
         path = custompath and custompath..languages[i] or "mods/"..modname.."/localization/"..languages[i]
         s, translation = pcall(require, path)
         if not s then -- now 'translation' contains the reason why file wasn't loaded
-            log(logLevel.Info, "Can't load localization files for mod '%s' - %s", modname, translation)
+            log(LogLevel.Info, "Can't load localization files for mod '%s' - %s", modname, translation)
         else
             break
         end
@@ -84,6 +86,4 @@ function i18n.getMods()
         r[#r+1] = k
     end
     return r
-end
-
 end
